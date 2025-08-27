@@ -8,8 +8,6 @@ const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 
 const apiRoutes = require('./routes/api.js');
-const fccTestingRoutes = require('./routes/fcctesting.js');
-const runner = require('./test-runner');
 
 const app = express();
 
@@ -19,7 +17,7 @@ const isProd = process.env.NODE_ENV === 'production';
 // Seguridad base
 app.disable('x-powered-by');
 
-// 🔒 CSP: solo 'self' para scripts y estilos
+// CSP: scripts y estilos solo 'self'
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
@@ -38,16 +36,15 @@ app.use(helmet({
 
 app.use(cors({ origin: '*' }));
 
-// Confianza en proxy solo en producción (p.ej., Render)
+// trust proxy solo en prod (1 salto típico)
 app.set('trust proxy', isProd ? 1 : false);
 
-// ⏱️ Rate limit (deshabilitado en test)
+// Rate limit (deshabilitado en test)
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  // si confías en proxy en prod, díselo al limiter:
   trustProxy: isProd
 });
 if (!isTest) app.use(limiter);
@@ -55,14 +52,19 @@ if (!isTest) app.use(limiter);
 // Estáticos
 app.use('/public', express.static(process.cwd() + '/public'));
 
-// Rutas FCC
-if (fccTestingRoutes) app.use('/_api', fccTestingRoutes);
+// ⚠️ Rutas FCC y runner: SOLO en test
+let runner; // declarado aquí para usar abajo en el arranque de test
+if (isTest) {
+  const fccTestingRoutes = require('./routes/fcctesting.js');
+  app.use('/_api', fccTestingRoutes);
+  runner = require('./test-runner');
+}
 
 // Rutas del proyecto
 app.use('/api', apiRoutes);
 
 // Home
-app.get('/', function (_req, res) {
+app.get('/', (_req, res) => {
   res.sendFile(process.cwd() + '/views/index.html');
 });
 
