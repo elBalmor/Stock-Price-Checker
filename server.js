@@ -17,7 +17,7 @@ const isProd = process.env.NODE_ENV === 'production';
 // Seguridad base
 app.disable('x-powered-by');
 
-// CSP: scripts y estilos solo 'self'
+// CSP con Helmet (scripts y estilos solo desde 'self')
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
@@ -34,7 +34,7 @@ app.use(helmet({
   }
 }));
 
-// 🔒 Asegurar CSP mínima que exige FCC (scripts y CSS solo desde 'self')
+// Forzar cabecera mínima que el checker de FCC valida
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
@@ -43,10 +43,9 @@ app.use((req, res, next) => {
   next();
 });
 
-
 app.use(cors({ origin: '*' }));
 
-// trust proxy solo en prod (1 salto típico)
+// Confianza en proxy solo en producción (p.ej. Render)
 app.set('trust proxy', isProd ? 1 : false);
 
 // Rate limit (deshabilitado en test)
@@ -62,11 +61,11 @@ if (!isTest) app.use(limiter);
 // Estáticos
 app.use('/public', express.static(process.cwd() + '/public'));
 
-// ⚠️ Rutas FCC y runner: SOLO en test
-let runner; // declarado aquí para usar abajo en el arranque de test
+// Rutas FCC y runner: SOLO en modo test
+let runner;
 if (isTest) {
   const fccTestingRoutes = require('./routes/fcctesting.js');
-  app.use('/_api', fccTestingRoutes);
+  fccTestingRoutes(app); // importante: pasar app, no usar app.use
   runner = require('./test-runner');
 }
 
@@ -78,30 +77,34 @@ app.get('/', (_req, res) => {
   res.sendFile(process.cwd() + '/views/index.html');
 });
 
-// Mongo
+// Mongo + Arranque (escuchar SOLO tras conectar)
 const uri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/fcc-stock';
-mongoose.connect(uri, { dbName: 'fcc-stock' })
-  .then(() => console.log('MongoDB conectado'))
-  .catch(err => console.error('Mongo error:', err));
-
-// Arranque
 const port = process.env.PORT || (isTest ? 3001 : 3000);
 
-if (!isTest) {
-  app.listen(port, () => console.log('Listening on port ' + port));
-} else {
-  app.listen(port, () => {
-    console.log('Listening on port ' + port);
-    console.log('Running Tests...');
-    setTimeout(() => {
-      try {
-        if (runner && runner.run) runner.run();
-      } catch (e) {
-        console.log('Tests are not valid:');
-        console.error(e);
-      }
-    }, 1500);
+mongoose.connect(uri, { dbName: 'fcc-stock' })
+  .then(() => {
+    console.log('MongoDB conectado');
+
+    if (!isTest) {
+      app.listen(port, () => console.log('Listening on port ' + port));
+    } else {
+      app.listen(port, () => {
+        console.log('Listening on port ' + port);
+        console.log('Running Tests...');
+        setTimeout(() => {
+          try {
+            if (runner && runner.run) runner.run();
+          } catch (e) {
+            console.log('Tests are not valid:');
+            console.error(e);
+          }
+        }, 1500);
+      });
+    }
+  })
+  .catch(err => {
+    console.error('Mongo error:', err);
+    process.exit(1);
   });
-}
 
 module.exports = app;
