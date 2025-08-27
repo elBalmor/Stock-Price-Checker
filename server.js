@@ -34,6 +34,16 @@ app.use(helmet({
   }
 }));
 
+// 🔒 Asegurar CSP mínima que exige FCC (scripts y CSS solo desde 'self')
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self'; style-src 'self'"
+  );
+  next();
+});
+
+
 app.use(cors({ origin: '*' }));
 
 // trust proxy solo en prod (1 salto típico)
